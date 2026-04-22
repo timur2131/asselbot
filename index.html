@@ -20,7 +20,7 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect } = React;
+        const { useState, useEffect, useCallback } = React;
 
         const App = () => {
             const [view, setView] = useState('client');
@@ -30,7 +30,6 @@
             const [name, setName] = useState('');
             const [bookings, setBookings] = useState([]);
 
-            // ОБЯЗАТЕЛЬНО ОБНОВИ ЭТУ ССЫЛКУ ПОСЛЕ ЗАПУСКА NGROK
             const API_BASE = "https://playgroup-baked-equator.ngrok-free.dev"; 
 
             const dates = Array.from({ length: 7 }, (_, i) => {
@@ -40,19 +39,20 @@
 
             const timeSlots = ["10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00"];
 
-            useEffect(() => {
-                if (view === 'admin') fetchBookings();
-                const itv = setInterval(() => { if(view === 'admin') fetchBookings(); }, 5000);
-                return () => clearInterval(itv);
-            }, [view]);
-
-            const fetchBookings = async () => {
+            const fetchBookings = useCallback(async () => {
                 try {
-                    const res = await fetch(`${API_BASE}/api/bookings`);
+                    const res = await fetch(`${API_BASE}/api/bookings`, { cache: 'no-store' });
+                    if (!res.ok) throw new Error();
                     const data = await res.json();
-                    setBookings(data.reverse());
-                } catch (e) { console.log("API error"); }
-            };
+                    setBookings(data); // Сортировка уже на бэкенде
+                } catch (e) { console.log("Fetch error"); }
+            }, [API_BASE]);
+
+            useEffect(() => {
+                fetchBookings(); // Сразу при загрузке
+                const itv = setInterval(fetchBookings, 3000); // Опрос каждые 3 сек
+                return () => clearInterval(itv);
+            }, [fetchBookings]);
 
             const handleBooking = async () => {
                 if (!name || !selectedDate || !selectedTime) return alert("Заполни всё!");
@@ -67,7 +67,11 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(payload)
                     });
-                    if (res.ok) alert("Запись создана! Мама получит уведомление.");
+                    if (res.ok) {
+                        alert("Запись создана! Мама получит уведомление.");
+                        setName(''); setSelectedDate(null); setSelectedTime(null);
+                        fetchBookings();
+                    }
                 } catch (e) { alert("Ошибка бэкенда"); }
             };
 
@@ -80,15 +84,13 @@
 
                     <div className="px-5 pb-10">
                         {view === 'client' ? (
-                            <div>
+                            <div className="animate-in fade-in duration-300">
                                 <h1 className="text-2xl font-bold mb-6">Запись к Асель</h1>
-                                
                                 <div className="space-y-6">
                                     <div>
                                         <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-2">Ваше имя</label>
                                         <input value={name} onChange={e => setName(e.target.value)} className="w-full bg-white border border-gray-100 rounded-2xl p-4 shadow-sm outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Введите имя..." />
                                     </div>
-
                                     <div>
                                         <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-2">Услуга</label>
                                         <div className="grid grid-cols-2 gap-3">
@@ -100,7 +102,6 @@
                                             ))}
                                         </div>
                                     </div>
-
                                     <div>
                                         <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-2">Дата</label>
                                         <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
@@ -112,7 +113,6 @@
                                             ))}
                                         </div>
                                     </div>
-
                                     <div>
                                         <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-2">Время</label>
                                         <div className="grid grid-cols-4 gap-2">
@@ -121,16 +121,15 @@
                                             ))}
                                         </div>
                                     </div>
-
                                     <button onClick={handleBooking} className="w-full bg-slate-900 text-white py-5 rounded-[2rem] font-bold shadow-xl active:scale-95 transition-all mt-4">Записаться</button>
                                 </div>
                             </div>
                         ) : (
-                            <div>
+                            <div className="animate-in slide-in-from-right duration-300">
                                 <h2 className="text-xl font-bold mb-6">Журнал</h2>
                                 <div className="space-y-3">
                                     {bookings.map(b => (
-                                        <div key={b.id} className="bg-white p-4 rounded-3xl shadow-sm border border-gray-50 flex justify-between items-center animate-pulse-slow">
+                                        <div key={b.id} className="bg-white p-4 rounded-3xl shadow-sm border border-gray-50 flex justify-between items-center">
                                             <div className="flex gap-4 items-center">
                                                 <div className="w-12 h-12 bg-gray-50 rounded-2xl flex items-center justify-center text-xl">{b.service_type === 'Стрижка' ? '✂️' : '🎨'}</div>
                                                 <div>
@@ -138,9 +137,13 @@
                                                     <div className="text-[10px] font-bold text-indigo-500 uppercase">{b.date_time}</div>
                                                 </div>
                                             </div>
-                                            <div className={`w-2 h-2 rounded-full ${b.status === 'confirmed' ? 'bg-green-500' : (b.status === 'rejected' ? 'bg-red-500' : 'bg-amber-500')}`}></div>
+                                            <div className="flex flex-col items-end gap-1">
+                                                <div className={`w-2 h-2 rounded-full ${b.status === 'confirmed' ? 'bg-green-500' : (b.status === 'rejected' ? 'bg-red-500' : 'bg-amber-500')}`}></div>
+                                                <span className="text-[8px] font-black uppercase text-gray-400">{b.status}</span>
+                                            </div>
                                         </div>
                                     ))}
+                                    {bookings.length === 0 && <p className="text-center text-gray-400 text-sm py-10">Записей пока нет</p>}
                                 </div>
                             </div>
                         )}
