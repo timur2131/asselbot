@@ -2,128 +2,155 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Запись к Асель</title>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>FuseCore Salon</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
-        body { background-color: #f3f4f6; font-family: sans-serif; }
-        .card { background: white; border-radius: 12px; padding: 15px; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-        .status-confirmed { border-left: 5px solid #10b981; }
-        .status-rejected { border-left: 5px solid #ef4444; opacity: 0.6; }
-        .status-pending { border-left: 5px solid #f59e0b; }
+        body { font-family: 'Inter', sans-serif; background-color: #F9FAFB; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .active-tab { position: relative; color: #4F46E5; }
+        .active-tab::after { content: ''; position: absolute; bottom: -12px; left: 0; right: 0; height: 2px; background: #4F46E5; border-radius: 2px; }
     </style>
 </head>
-<body class="p-4">
-    <div id="app">
-        <div class="flex gap-2 mb-6">
-            <button onclick="showPage('client')" class="flex-1 bg-indigo-600 text-white py-2 rounded-lg font-medium">Клиент</button>
-            <button onclick="showPage('admin')" class="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg font-medium">Админ</button>
-        </div>
+<body>
+    <div id="root"></div>
 
-        <div id="client-page">
-            <h1 class="text-xl font-bold mb-4">Запись к Асель</h1>
-            <div class="card">
-                <label class="block text-sm mb-1">Ваше имя:</label>
-                <input type="text" id="name" class="w-full border rounded p-2 mb-4" placeholder="Введите имя">
-                
-                <label class="block text-sm mb-1">Услуга:</label>
-                <select id="service" class="w-full border rounded p-2 mb-4">
-                    <option value="Стрижка">Стрижка</option>
-                    <option value="Окрашивание">Окрашивание</option>
-                </select>
+    <script type="text/babel">
+        const { useState, useEffect } = React;
 
-                <label class="block text-sm mb-1">Дата и время:</label>
-                <input type="datetime-local" id="time" class="w-full border rounded p-2 mb-6">
+        const App = () => {
+            const [view, setView] = useState('client');
+            const [selectedDate, setSelectedDate] = useState(null);
+            const [selectedTime, setSelectedTime] = useState(null);
+            const [selectedService, setSelectedService] = useState('Стрижка');
+            const [name, setName] = useState('');
+            const [bookings, setBookings] = useState([]);
 
-                <button onclick="sendBooking()" id="send-btn" class="w-full bg-green-500 text-white py-3 rounded-xl font-bold">Записаться</button>
-            </div>
-        </div>
+            // ОБЯЗАТЕЛЬНО ОБНОВИ ЭТУ ССЫЛКУ ПОСЛЕ ЗАПУСКА NGROK
+            const API_BASE = "https://playgroup-baked-equator.ngrok-free.dev"; 
 
-        <div id="admin-page" class="hidden">
-            <h1 class="text-xl font-bold mb-4">Журнал записей</h1>
-            <div id="bookings-list">
-                <p class="text-gray-500">Загрузка данных...</p>
-            </div>
-        </div>
-    </div>
+            const dates = Array.from({ length: 7 }, (_, i) => {
+                const d = new Date(); d.setDate(d.getDate() + i);
+                return { day: d.toLocaleDateString('ru-RU', { weekday: 'short' }), date: d.getDate(), full: d.toLocaleDateString('ru-RU') };
+            });
 
-    <script>
-        const tg = window.Telegram.WebApp;
-        tg.expand();
+            const timeSlots = ["10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00"];
 
-        const API_BASE = "https://playgroup-baked-equator.ngrok-free.dev"; // ТВОЙ URL
+            useEffect(() => {
+                if (view === 'admin') fetchBookings();
+                const itv = setInterval(() => { if(view === 'admin') fetchBookings(); }, 5000);
+                return () => clearInterval(itv);
+            }, [view]);
 
-        function showPage(page) {
-            document.getElementById('client-page').classList.toggle('hidden', page !== 'client');
-            document.getElementById('admin-page').classList.toggle('hidden', page !== 'admin');
-            if (page === 'admin') fetchBookings();
-        }
-
-        // ОТПРАВКА ЗАПИСИ
-        async function sendBooking() {
-            const btn = document.getElementById('send-btn');
-            const data = {
-                name: document.getElementById('name').value,
-                service: document.getElementById('service').value,
-                time: document.getElementById('time').value.replace('T', ' '),
-                telegram_id: tg.initDataUnsafe?.user?.id?.toString() || "000000"
+            const fetchBookings = async () => {
+                try {
+                    const res = await fetch(`${API_BASE}/api/bookings`);
+                    const data = await res.json();
+                    setBookings(data.reverse());
+                } catch (e) { console.log("API error"); }
             };
 
-            if (!data.name || !data.time) return alert("Заполните все поля!");
+            const handleBooking = async () => {
+                if (!name || !selectedDate || !selectedTime) return alert("Заполни всё!");
+                const payload = {
+                    name, service: selectedService,
+                    time: `${selectedDate} ${selectedTime}`,
+                    telegram_id: window.Telegram?.WebApp?.initDataUnsafe?.user?.id?.toString() || "000000"
+                };
+                try {
+                    const res = await fetch(`${API_BASE}/api/book`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    if (res.ok) alert("Запись создана! Мама получит уведомление.");
+                } catch (e) { alert("Ошибка бэкенда"); }
+            };
 
-            btn.disabled = true;
-            btn.innerText = "Отправка...";
+            return (
+                <div className="max-w-md mx-auto min-h-screen">
+                    <nav className="flex justify-around py-4 bg-white border-b sticky top-0 z-50 mb-6 shadow-sm">
+                        <button onClick={() => setView('client')} className={`text-sm font-bold transition-all ${view === 'client' ? 'active-tab' : 'text-gray-400'}`}>Клиент</button>
+                        <button onClick={() => setView('admin')} className={`text-sm font-bold transition-all ${view === 'admin' ? 'active-tab' : 'text-gray-400'}`}>Админ</button>
+                    </nav>
 
-            try {
-                const res = await fetch(`${API_BASE}/api/book`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(data)
-                });
-                if (res.ok) {
-                    alert("Заявка отправлена!");
-                    document.getElementById('name').value = "";
-                }
-            } catch (e) { alert("Ошибка соединения!"); }
-            btn.disabled = false;
-            btn.innerText = "Записаться";
-        }
-
-        // ПОЛУЧЕНИЕ ЗАПИСЕЙ (АДМИН)
-        async function fetchBookings() {
-            try {
-                const res = await fetch(`${API_BASE}/api/bookings`);
-                const data = await res.json();
-                const list = document.getElementById('bookings-list');
-                list.innerHTML = "";
-
-                data.reverse().forEach(b => {
-                    const div = document.createElement('div');
-                    div.className = `card status-${b.status}`;
-                    div.innerHTML = `
-                        <div class="flex justify-between items-start">
+                    <div className="px-5 pb-10">
+                        {view === 'client' ? (
                             <div>
-                                <div class="font-bold text-lg">${b.client_name}</div>
-                                <div class="text-sm text-gray-600">${b.service_type}</div>
-                                <div class="text-xs text-indigo-600 font-medium mt-1">${b.date_time}</div>
-                            </div>
-                            <div class="text-xs uppercase font-bold ${b.status === 'confirmed' ? 'text-green-600' : 'text-orange-500'}">
-                                ${b.status === 'confirmed' ? '✓ Ок' : (b.status === 'rejected' ? '✕ Отмена' : 'Ожидание')}
-                            </div>
-                        </div>
-                    `;
-                    list.appendChild(div);
-                });
-            } catch (e) { console.error("Ошибка загрузки"); }
-        }
+                                <h1 className="text-2xl font-bold mb-6">Запись к Асель</h1>
+                                
+                                <div className="space-y-6">
+                                    <div>
+                                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-2">Ваше имя</label>
+                                        <input value={name} onChange={e => setName(e.target.value)} className="w-full bg-white border border-gray-100 rounded-2xl p-4 shadow-sm outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Введите имя..." />
+                                    </div>
 
-        // Авто-обновление каждые 5 секунд
-        setInterval(() => {
-            if (!document.getElementById('admin-page').classList.contains('hidden')) {
-                fetchBookings();
-            }
-        }, 5000);
+                                    <div>
+                                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-2">Услуга</label>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            {['Стрижка', 'Окрашивание'].map(s => (
+                                                <button key={s} onClick={() => setSelectedService(s)} className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center ${selectedService === s ? 'border-indigo-600 bg-indigo-50 text-indigo-600' : 'border-white bg-white shadow-sm text-gray-500'}`}>
+                                                    <span className="text-xl mb-1">{s === 'Стрижка' ? '✂️' : '🎨'}</span>
+                                                    <span className="text-xs font-bold">{s}</span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-2">Дата</label>
+                                        <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
+                                            {dates.map(d => (
+                                                <button key={d.full} onClick={() => setSelectedDate(d.full)} className={`flex-shrink-0 w-14 h-20 rounded-2xl flex flex-col items-center justify-center transition-all ${selectedDate === d.full ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white text-gray-400 border border-gray-50'}`}>
+                                                    <span className="text-[10px] uppercase font-bold mb-1">{d.day}</span>
+                                                    <span className="text-lg font-bold">{d.date}</span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-2">Время</label>
+                                        <div className="grid grid-cols-4 gap-2">
+                                            {timeSlots.map(t => (
+                                                <button key={t} onClick={() => setSelectedTime(t)} className={`py-3 rounded-xl text-xs font-bold border transition-all ${selectedTime === t ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-600 border-gray-100 shadow-sm'}`}>{t}</button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <button onClick={handleBooking} className="w-full bg-slate-900 text-white py-5 rounded-[2rem] font-bold shadow-xl active:scale-95 transition-all mt-4">Записаться</button>
+                                </div>
+                            </div>
+                        ) : (
+                            <div>
+                                <h2 className="text-xl font-bold mb-6">Журнал</h2>
+                                <div className="space-y-3">
+                                    {bookings.map(b => (
+                                        <div key={b.id} className="bg-white p-4 rounded-3xl shadow-sm border border-gray-50 flex justify-between items-center animate-pulse-slow">
+                                            <div className="flex gap-4 items-center">
+                                                <div className="w-12 h-12 bg-gray-50 rounded-2xl flex items-center justify-center text-xl">{b.service_type === 'Стрижка' ? '✂️' : '🎨'}</div>
+                                                <div>
+                                                    <div className="font-bold text-sm text-gray-800">{b.client_name}</div>
+                                                    <div className="text-[10px] font-bold text-indigo-500 uppercase">{b.date_time}</div>
+                                                </div>
+                                            </div>
+                                            <div className={`w-2 h-2 rounded-full ${b.status === 'confirmed' ? 'bg-green-500' : (b.status === 'rejected' ? 'bg-red-500' : 'bg-amber-500')}`}></div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
     </script>
 </body>
 </html>
