@@ -10,72 +10,97 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 </head>
-<body class="bg-gray-50 font-['Inter']">
+<body class="bg-slate-50 font-['Inter']">
     <div id="root"></div>
+
     <script type="text/babel">
-        const { useState, useEffect } = React;
+        const { useState, useEffect, useCallback } = React;
 
         const App = () => {
             const [view, setView] = useState('client');
             const [name, setName] = useState('');
             const [bookings, setBookings] = useState([]);
             
-            // ПРОВЕРЬ ЭТУ ССЫЛКУ - ОНА ДОЛЖНА БЫТЬ ИЗ ТВОЕГО NGROK
+            // ВАЖНО: Ссылка должна быть актуальной из ngrok
             const API_BASE = "https://playgroup-baked-equator.ngrok-free.dev"; 
 
-            const fetchBookings = async () => {
+            const fetchBookings = useCallback(async () => {
                 try {
-                    const res = await fetch(`${API_BASE}/api/bookings`);
+                    const res = await fetch(`${API_BASE}/api/bookings`, {
+                        headers: {
+                            "ngrok-skip-browser-warning": "69420" // Пропуск страницы ngrok
+                        }
+                    });
                     if (res.ok) {
                         const data = await res.json();
                         setBookings(data);
                     }
-                } catch (e) { console.error("Ошибка связи с бэкендом"); }
-            };
+                } catch (e) {
+                    console.error("Ошибка сети:", e);
+                }
+            }, []);
 
             useEffect(() => {
                 fetchBookings();
-                const timer = setInterval(fetchBookings, 5000);
-                return () => clearInterval(timer);
-            }, []);
+                const itv = setInterval(fetchBookings, 3000);
+                return () => clearInterval(itv);
+            }, [fetchBookings]);
+
+            const handleBook = async () => {
+                if(!name) return alert("Введите имя");
+                try {
+                    const res = await fetch(`${API_BASE}/api/book`, {
+                        method: 'POST',
+                        headers: { 
+                            'Content-Type': 'application/json',
+                            "ngrok-skip-browser-warning": "69420"
+                        },
+                        body: JSON.stringify({
+                            name, service: 'Стрижка', time: 'Сегодня 15:00', telegram_id: '000000'
+                        })
+                    });
+                    if(res.ok) {
+                        alert("Запись создана!");
+                        setName('');
+                        fetchBookings();
+                    }
+                } catch (e) { alert("Ошибка при записи"); }
+            };
 
             return (
-                <div class="max-w-md mx-auto min-h-screen pb-10">
-                    <nav class="flex justify-around bg-white py-4 border-b sticky top-0 z-50 shadow-sm">
-                        <button onClick={() => setView('client')} class={`font-bold ${view === 'client' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-gray-400'}`}>Клиент</button>
-                        <button onClick={() => setView('admin')} class={`font-bold ${view === 'admin' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-gray-400'}`}>Админ</button>
+                <div className="max-w-md mx-auto min-h-screen shadow-2xl bg-white">
+                    <nav className="flex justify-around py-4 border-b sticky top-0 bg-white/80 backdrop-blur-md z-10">
+                        <button onClick={() => setView('client')} className={`font-bold transition ${view === 'client' ? 'text-indigo-600' : 'text-slate-400'}`}>Клиент</button>
+                        <button onClick={() => setView('admin')} className={`font-bold transition ${view === 'admin' ? 'text-indigo-600' : 'text-slate-400'}`}>Админ (Журнал)</button>
                     </nav>
 
-                    <div class="p-5">
+                    <div className="p-6">
                         {view === 'client' ? (
-                            <div class="space-y-6">
-                                <h1 class="text-2xl font-bold">Запись к Асель</h1>
-                                <input value={name} onChange={e => setName(e.target.value)} class="w-full p-4 border rounded-2xl" placeholder="Твое имя..." />
-                                <button onClick={async () => {
-                                    await fetch(`${API_BASE}/api/book`, {
-                                        method: 'POST',
-                                        headers: {'Content-Type': 'application/json'},
-                                        body: JSON.stringify({name, service: 'Стрижка', time: 'Сегодня 12:00', telegram_id: '0000'})
-                                    });
-                                    alert("Отправлено!");
-                                    setName('');
-                                }} class="w-full bg-black text-white py-4 rounded-2xl font-bold">Отправить тестовую запись</button>
+                            <div className="space-y-6">
+                                <h1 className="text-2xl font-bold text-slate-800">Запись к Асель</h1>
+                                <input value={name} onChange={e => setName(e.target.value)} placeholder="Ваше имя" className="w-full p-4 border-2 border-slate-100 rounded-2xl outline-none focus:border-indigo-500 transition" />
+                                <button onClick={handleBook} className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-bold shadow-lg shadow-indigo-200 active:scale-95 transition-all">Создать тестовую запись</button>
                             </div>
                         ) : (
-                            <div class="space-y-4">
-                                <h2 class="text-xl font-bold">Журнал записей</h2>
+                            <div className="space-y-4">
+                                <h2 className="text-xl font-bold text-slate-800 mb-6">Журнал записей</h2>
                                 {bookings.length > 0 ? bookings.map(b => (
-                                    <div key={b.id} class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-center">
+                                    <div key={b.id} className="p-4 border border-slate-100 rounded-3xl bg-slate-50 flex justify-between items-center animate-in fade-in slide-in-from-bottom-2">
                                         <div>
-                                            <div class="font-bold text-gray-800">{b.name}</div>
-                                            <div class="text-xs text-indigo-500 font-bold uppercase">{b.time}</div>
-                                            <div class="text-[10px] text-gray-400">{b.service}</div>
+                                            <div className="font-bold text-slate-800">{b.name}</div>
+                                            <div className="text-[10px] text-indigo-600 font-bold uppercase">{b.time}</div>
+                                            <div className="text-[10px] text-slate-400 font-medium italic">{b.service}</div>
                                         </div>
-                                        <div class={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${b.status === 'confirmed' ? 'bg-green-100 text-green-600' : (b.status === 'rejected' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-600')}`}>
-                                            {b.status}
+                                        <div className={`px-3 py-1 rounded-full text-[9px] font-black uppercase ${b.status === 'confirmed' ? 'bg-green-100 text-green-600' : (b.status === 'rejected' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-600')}`}>
+                                            {b.status === 'pending' ? 'Ожидание' : (b.status === 'confirmed' ? 'Принят' : 'Отказ')}
                                         </div>
                                     </div>
-                                )) : <div class="text-center py-20 text-gray-400">Записей пока нет. Проверь ngrok!</div>}
+                                )) : (
+                                    <div className="text-center py-20 text-slate-400">
+                                        <p className="text-sm">Записей пока нет.</p>
+                                        <p className="text-[10px]">Если в консоли все еще красные ошибки — проверь CORS в main.py</p>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>
