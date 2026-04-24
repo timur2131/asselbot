@@ -41,16 +41,18 @@
 
             const fetchBookings = useCallback(async () => {
                 try {
+                    // cache: 'no-store' заставляет браузер всегда брать свежие данные
                     const res = await fetch(`${API_BASE}/api/bookings`, { cache: 'no-store' });
                     if (!res.ok) throw new Error();
                     const data = await res.json();
-                    setBookings(data); // Сортировка уже на бэкенде
+                    setBookings(data);
                 } catch (e) { console.log("Fetch error"); }
             }, [API_BASE]);
 
             useEffect(() => {
-                fetchBookings(); // Сразу при загрузке
-                const itv = setInterval(fetchBookings, 3000); // Опрос каждые 3 сек
+                fetchBookings();
+                // Опрашиваем сервер каждые 3 секунды, чтобы статус в журнале менялся сам
+                const itv = setInterval(fetchBookings, 3000);
                 return () => clearInterval(itv);
             }, [fetchBookings]);
 
@@ -139,11 +141,10 @@
                                             </div>
                                             <div className="flex flex-col items-end gap-1">
                                                 <div className={`w-2 h-2 rounded-full ${b.status === 'confirmed' ? 'bg-green-500' : (b.status === 'rejected' ? 'bg-red-500' : 'bg-amber-500')}`}></div>
-                                                <span className="text-[8px] font-black uppercase text-gray-400">{b.status}</span>
+                                                <span className="text-[8px] font-black uppercase text-gray-400">{b.status === 'pending' ? 'Ожидает' : (b.status === 'confirmed' ? 'Ок' : 'Отмена')}</span>
                                             </div>
                                         </div>
                                     ))}
-                                    {bookings.length === 0 && <p className="text-center text-gray-400 text-sm py-10">Записей пока нет</p>}
                                 </div>
                             </div>
                         )}
