@@ -9,141 +9,73 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-    <style>
-        body { font-family: 'Inter', sans-serif; background-color: #F9FAFB; }
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        .active-tab { position: relative; color: #4F46E5; }
-        .active-tab::after { content: ''; position: absolute; bottom: -12px; left: 0; right: 0; height: 2px; background: #4F46E5; border-radius: 2px; }
-    </style>
 </head>
-<body>
+<body class="bg-gray-50 font-['Inter']">
     <div id="root"></div>
-
     <script type="text/babel">
-        const { useState, useEffect, useCallback } = React;
+        const { useState, useEffect } = React;
 
         const App = () => {
             const [view, setView] = useState('client');
-            const [selectedDate, setSelectedDate] = useState(null);
-            const [selectedTime, setSelectedTime] = useState(null);
-            const [selectedService, setSelectedService] = useState('Стрижка');
             const [name, setName] = useState('');
             const [bookings, setBookings] = useState([]);
-
+            
+            // ПРОВЕРЬ ЭТУ ССЫЛКУ - ОНА ДОЛЖНА БЫТЬ ИЗ ТВОЕГО NGROK
             const API_BASE = "https://playgroup-baked-equator.ngrok-free.dev"; 
 
-            const dates = Array.from({ length: 7 }, (_, i) => {
-                const d = new Date(); d.setDate(d.getDate() + i);
-                return { day: d.toLocaleDateString('ru-RU', { weekday: 'short' }), date: d.getDate(), full: d.toLocaleDateString('ru-RU') };
-            });
-
-            const timeSlots = ["10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00"];
-
-            const fetchBookings = useCallback(async () => {
+            const fetchBookings = async () => {
                 try {
-                    const res = await fetch(`${API_BASE}/api/bookings`, { cache: 'no-store' });
+                    const res = await fetch(`${API_BASE}/api/bookings`);
                     if (res.ok) {
                         const data = await res.json();
                         setBookings(data);
                     }
-                } catch (e) { console.error("Ошибка загрузки журнала"); }
-            }, [API_BASE]);
+                } catch (e) { console.error("Ошибка связи с бэкендом"); }
+            };
 
             useEffect(() => {
                 fetchBookings();
-                const interval = setInterval(fetchBookings, 3000);
-                return () => clearInterval(interval);
-            }, [fetchBookings]);
-
-            const handleBooking = async () => {
-                if (!name || !selectedDate || !selectedTime) return alert("Заполни все поля!");
-                const payload = {
-                    name: name,
-                    service: selectedService,
-                    time: `${selectedDate} ${selectedTime}`,
-                    telegram_id: window.Telegram?.WebApp?.initDataUnsafe?.user?.id?.toString() || "000000"
-                };
-                try {
-                    const res = await fetch(`${API_BASE}/api/book`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
-                    });
-                    if (res.ok) {
-                        alert("Запись отправлена!");
-                        setName(''); setSelectedDate(null); setSelectedTime(null);
-                        fetchBookings();
-                    }
-                } catch (e) { alert("Ошибка сервера"); }
-            };
+                const timer = setInterval(fetchBookings, 5000);
+                return () => clearInterval(timer);
+            }, []);
 
             return (
-                <div className="max-w-md mx-auto min-h-screen">
-                    <nav className="flex justify-around py-4 bg-white border-b sticky top-0 z-50 mb-6 shadow-sm">
-                        <button onClick={() => setView('client')} className={`text-sm font-bold ${view === 'client' ? 'active-tab' : 'text-gray-400'}`}>Клиент</button>
-                        <button onClick={() => setView('admin')} className={`text-sm font-bold ${view === 'admin' ? 'active-tab' : 'text-gray-400'}`}>Админ</button>
+                <div class="max-w-md mx-auto min-h-screen pb-10">
+                    <nav class="flex justify-around bg-white py-4 border-b sticky top-0 z-50 shadow-sm">
+                        <button onClick={() => setView('client')} class={`font-bold ${view === 'client' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-gray-400'}`}>Клиент</button>
+                        <button onClick={() => setView('admin')} class={`font-bold ${view === 'admin' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-gray-400'}`}>Админ</button>
                     </nav>
 
-                    <div className="px-5 pb-10">
+                    <div class="p-5">
                         {view === 'client' ? (
-                            <div>
-                                <h1 className="text-2xl font-bold mb-6">Запись к Асель</h1>
-                                <div className="space-y-6">
-                                    <input value={name} onChange={e => setName(e.target.value)} className="w-full bg-white border border-gray-200 rounded-2xl p-4 outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm" placeholder="Ваше имя..." />
-                                    
-                                    <div className="grid grid-cols-2 gap-3">
-                                        {['Стрижка', 'Окрашивание'].map(s => (
-                                            <button key={s} onClick={() => setSelectedService(s)} className={`p-4 rounded-2xl border-2 transition-all ${selectedService === s ? 'border-indigo-600 bg-indigo-50 text-indigo-600' : 'border-transparent bg-white text-gray-500 shadow-sm'}`}>
-                                                <div className="text-xl mb-1">{s === 'Стрижка' ? '✂️' : '🎨'}</div>
-                                                <div className="text-xs font-bold">{s}</div>
-                                            </button>
-                                        ))}
-                                    </div>
-
-                                    <div className="flex gap-2 overflow-x-auto no-scrollbar">
-                                        {dates.map(d => (
-                                            <button key={d.full} onClick={() => setSelectedDate(d.full)} className={`flex-shrink-0 w-14 h-20 rounded-2xl flex flex-col items-center justify-center transition-all ${selectedDate === d.full ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white text-gray-400 border border-gray-100'}`}>
-                                                <span className="text-[10px] uppercase font-bold">{d.day}</span>
-                                                <span className="text-lg font-bold">{d.date}</span>
-                                            </button>
-                                        ))}
-                                    </div>
-
-                                    <div className="grid grid-cols-4 gap-2">
-                                        {timeSlots.map(t => (
-                                            <button key={t} onClick={() => setSelectedTime(t)} className={`py-3 rounded-xl text-xs font-bold transition-all ${selectedTime === t ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-100'}`}>{t}</button>
-                                        ))}
-                                    </div>
-
-                                    <button onClick={handleBooking} className="w-full bg-slate-900 text-white py-5 rounded-[2rem] font-bold shadow-xl active:scale-95 transition-all">Записаться</button>
-                                </div>
+                            <div class="space-y-6">
+                                <h1 class="text-2xl font-bold">Запись к Асель</h1>
+                                <input value={name} onChange={e => setName(e.target.value)} class="w-full p-4 border rounded-2xl" placeholder="Твое имя..." />
+                                <button onClick={async () => {
+                                    await fetch(`${API_BASE}/api/book`, {
+                                        method: 'POST',
+                                        headers: {'Content-Type': 'application/json'},
+                                        body: JSON.stringify({name, service: 'Стрижка', time: 'Сегодня 12:00', telegram_id: '0000'})
+                                    });
+                                    alert("Отправлено!");
+                                    setName('');
+                                }} class="w-full bg-black text-white py-4 rounded-2xl font-bold">Отправить тестовую запись</button>
                             </div>
                         ) : (
-                            <div>
-                                <h2 className="text-xl font-bold mb-6">Журнал записей</h2>
-                                <div className="space-y-4">
-                                    {bookings.length > 0 ? bookings.map(b => (
-                                        <div key={b.id} className="bg-white p-4 rounded-3xl shadow-sm border border-gray-100 flex justify-between items-center">
-                                            <div className="flex gap-4 items-center">
-                                                <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center text-xl">
-                                                    {b.service === 'Стрижка' ? '✂️' : '🎨'}
-                                                </div>
-                                                <div>
-                                                    <div className="font-bold text-gray-800">{b.name}</div>
-                                                    <div className="text-[10px] font-bold text-indigo-500 uppercase tracking-tighter">{b.time}</div>
-                                                    <div className="text-[10px] text-gray-400 font-medium italic">{b.service}</div>
-                                                </div>
-                                            </div>
-                                            <div className="flex flex-col items-end gap-1">
-                                                <div className={`px-3 py-1 rounded-full text-[9px] font-black uppercase ${b.status === 'confirmed' ? 'bg-green-100 text-green-600' : (b.status === 'rejected' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-600')}`}>
-                                                    {b.status === 'pending' ? 'Ожидание' : (b.status === 'confirmed' ? 'Принят' : 'Отказ')}
-                                                </div>
-                                            </div>
+                            <div class="space-y-4">
+                                <h2 class="text-xl font-bold">Журнал записей</h2>
+                                {bookings.length > 0 ? bookings.map(b => (
+                                    <div key={b.id} class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-center">
+                                        <div>
+                                            <div class="font-bold text-gray-800">{b.name}</div>
+                                            <div class="text-xs text-indigo-500 font-bold uppercase">{b.time}</div>
+                                            <div class="text-[10px] text-gray-400">{b.service}</div>
                                         </div>
-                                    )) : (
-                                        <div className="text-center py-20 text-gray-400 text-sm">В журнале пока пусто</div>
-                                    )}
-                                </div>
+                                        <div class={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${b.status === 'confirmed' ? 'bg-green-100 text-green-600' : (b.status === 'rejected' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-600')}`}>
+                                            {b.status}
+                                        </div>
+                                    </div>
+                                )) : <div class="text-center py-20 text-gray-400">Записей пока нет. Проверь ngrok!</div>}
                             </div>
                         )}
                     </div>
