@@ -8,117 +8,139 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; background: #0F172A; color: white; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
+        .active-btn { background: #6366F1 !important; color: white !important; box-shadow: 0 0 20px rgba(99, 102, 241, 0.4); }
+    </style>
 </head>
-<body class="bg-slate-50 font-sans">
+<body>
     <div id="root"></div>
     <script type="text/babel">
-        const { useState, useEffect } = React;
+        const { useState, useEffect, useCallback } = React;
 
         const App = () => {
-            // Загружаем данные из памяти телефона
-            const [name, setName] = useState(localStorage.getItem('user_name') || '');
-            const [phone, setPhone] = useState(localStorage.getItem('user_phone') || '');
+            const [view, setView] = useState('client');
             const [selectedDate, setSelectedDate] = useState(null);
             const [selectedTime, setSelectedTime] = useState(null);
-            const [service, setService] = useState('Стрижка');
+            const [selectedService, setSelectedService] = useState('Стрижка');
             const [comment, setComment] = useState('');
-            const [busySlots, setBusySlots] = useState([]);
+            const [bookings, setBookings] = useState([]);
 
-            // ОБЯЗАТЕЛЬНО ОБНОВЛЯЙ ЭТУ ССЫЛКУ ПОСЛЕ ПЕРЕЗАПУСКА NGROK!
-            const API_BASE = "https://ВАША-НОВАЯ-ССЫЛКА.ngrok-free.dev"; 
+            // ТВОЯ ССЫЛКА NGROK (МЕНЯЙ ПРИ ПЕРЕЗАПУСКЕ!)
+            const API_BASE = "https://playgroup-baked-equator.ngrok-free.dev"; 
 
             useEffect(() => {
-                const tg = window.Telegram.WebApp;
-                tg.ready();
-                tg.expand();
-                
-                // Получаем занятые слоты с сервера
-                fetch(`${API_BASE}/api/bookings`, { headers: {"ngrok-skip-browser-warning": "69420"} })
-                    .then(r => r.json())
-                    .then(data => setBusySlots(data));
+                window.Telegram?.WebApp?.ready();
+                window.Telegram?.WebApp?.expand();
             }, []);
-
-            const handleBooking = async () => {
-                if (!name || !phone || !selectedDate || !selectedTime) return alert("Заполни все поля!");
-                
-                // Сохраняем для следующего раза
-                localStorage.setItem('user_name', name);
-                localStorage.setItem('user_phone', phone);
-
-                const fullTime = `${selectedDate} ${selectedTime}`;
-                const payload = {
-                    name, phone, service, comment, time: fullTime,
-                    telegram_id: window.Telegram.WebApp.initDataUnsafe?.user?.id?.toString() || "000"
-                };
-
-                try {
-                    const res = await fetch(`${API_BASE}/api/book`, {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json', "ngrok-skip-browser-warning": "69420"},
-                        body: JSON.stringify(payload)
-                    });
-                    if (res.ok) {
-                        window.Telegram.WebApp.close();
-                    }
-                } catch (e) { alert("Ошибка! Проверь API_BASE."); }
-            };
 
             const dates = Array.from({ length: 7 }, (_, i) => {
                 const d = new Date(); d.setDate(d.getDate() + i);
-                return d.toLocaleDateString('ru-RU');
+                return { day: d.toLocaleDateString('ru-RU', { weekday: 'short' }), date: d.getDate(), full: d.toLocaleDateString('ru-RU') };
             });
 
-            const times = ["10:00", "12:00", "14:00", "16:00", "18:00"];
+            const timeSlots = ["10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00"];
+
+            const fetchBookings = useCallback(async () => {
+                try {
+                    const res = await fetch(`${API_BASE}/api/bookings`, { headers: { "ngrok-skip-browser-warning": "69420" } });
+                    if (res.ok) setBookings(await res.json());
+                } catch (e) {}
+            }, [API_BASE]);
+
+            useEffect(() => {
+                fetchBookings();
+                const itv = setInterval(fetchBookings, 5000);
+                return () => clearInterval(itv);
+            }, [fetchBookings]);
+
+            const handleBooking = async () => {
+                if (!selectedDate || !selectedTime) return alert("Выбери дату и время!");
+                
+                const user = window.Telegram?.WebApp?.initDataUnsafe?.user;
+                const payload = {
+                    name: user?.first_name || "Клиент",
+                    service: selectedService,
+                    time: `${selectedDate} ${selectedTime}`,
+                    comment: comment,
+                    telegram_id: user?.id?.toString() || "000000"
+                };
+                
+                try {
+                    const res = await fetch(`${API_BASE}/api/book`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', "ngrok-skip-browser-warning": "69420" },
+                        body: JSON.stringify(payload)
+                    });
+                    if (res.ok) {
+                        window.Telegram?.WebApp?.close();
+                    }
+                } catch (e) { alert("Ошибка: " + e.message); }
+            };
 
             return (
-                <div className="p-5 max-w-md mx-auto">
-                    <h1 className="text-2xl font-black mb-6 uppercase tracking-tighter text-slate-800">Запись к Асель</h1>
-                    
-                    <div className="space-y-4">
-                        <input value={name} onChange={e => setName(e.target.value)} placeholder="Ваше имя" className="w-full p-4 rounded-2xl bg-white shadow-sm outline-none" />
-                        <input value={phone} onChange={e => setPhone(e.target.value)} placeholder="Телефон" className="w-full p-4 rounded-2xl bg-white shadow-sm outline-none" />
-                        
-                        <div className="bg-white p-4 rounded-2xl shadow-sm">
-                            <p className="text-[10px] font-bold text-gray-400 mb-3 uppercase">Услуга</p>
-                            <div className="flex gap-2">
-                                {['Стрижка', 'Окрашивание'].map(s => (
-                                    <button key={s} onClick={() => setService(s)} className={`flex-1 p-3 rounded-xl font-bold text-xs ${service === s ? 'bg-indigo-600 text-white' : 'bg-slate-50 text-slate-400'}`}>{s}</button>
-                                ))}
-                            </div>
-                        </div>
-
-                        <div className="bg-white p-4 rounded-2xl shadow-sm">
-                            <p className="text-[10px] font-bold text-gray-400 mb-3 uppercase">Дата</p>
-                            <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
-                                {dates.map(d => (
-                                    <button key={d} onClick={() => setSelectedDate(d)} className={`flex-shrink-0 px-4 py-2 rounded-xl text-xs font-bold ${selectedDate === d ? 'bg-indigo-600 text-white' : 'bg-slate-50 text-slate-400'}`}>{d}</button>
-                                ))}
-                            </div>
-                        </div>
-
-                        {selectedDate && (
-                            <div className="bg-white p-4 rounded-2xl shadow-sm grid grid-cols-3 gap-2 animate-in fade-in">
-                                {times.map(t => {
-                                    const isBusy = busySlots.includes(`${selectedDate} ${t}`);
-                                    return (
-                                        <button 
-                                            key={t} 
-                                            disabled={isBusy}
-                                            onClick={() => setSelectedTime(t)} 
-                                            className={`p-3 rounded-xl text-xs font-bold ${isBusy ? 'bg-gray-100 text-gray-300' : (selectedTime === t ? 'bg-indigo-600 text-white' : 'bg-slate-50 text-slate-500')}`}
-                                        >
-                                            {t} {isBusy ? '✖' : ''}
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        )}
-
-                        <textarea value={comment} onChange={e => setComment(e.target.value)} placeholder="Комментарий (необязательно)" className="w-full p-4 rounded-2xl bg-white shadow-sm outline-none h-24 resize-none" />
-
-                        <button onClick={handleBooking} className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black shadow-lg active:scale-95 transition-all">ЗАПИСАТЬСЯ</button>
+                <div className="max-w-md mx-auto min-h-screen p-4">
+                    <div className="flex bg-slate-800 rounded-2xl p-1 mb-6">
+                        <button onClick={() => setView('client')} className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${view === 'client' ? 'bg-slate-700 text-white' : 'text-slate-400'}`}>Запись</button>
+                        <button onClick={() => setView('admin')} className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${view === 'admin' ? 'bg-slate-700 text-white' : 'text-slate-400'}`}>Журнал</button>
                     </div>
+
+                    {view === 'client' ? (
+                        <div className="space-y-6">
+                            <div className="glass p-6 rounded-[2rem]">
+                                <p className="text-[10px] uppercase font-black tracking-widest text-indigo-400 mb-4">Услуга</p>
+                                <div className="grid grid-cols-2 gap-3">
+                                    {['Стрижка', 'Окрашивание'].map(s => (
+                                        <button key={s} onClick={() => setSelectedService(s)} className={`py-4 rounded-2xl border border-white/5 font-bold transition-all ${selectedService === s ? 'active-btn' : 'bg-white/5'}`}>
+                                            {s}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="glass p-6 rounded-[2rem]">
+                                <p className="text-[10px] uppercase font-black tracking-widest text-indigo-400 mb-4">Когда?</p>
+                                <div className="flex gap-2 overflow-x-auto no-scrollbar mb-6">
+                                    {dates.map(d => (
+                                        <button key={d.full} onClick={() => setSelectedDate(d.full)} className={`flex-shrink-0 w-12 py-3 rounded-xl flex flex-col items-center border border-white/5 ${selectedDate === d.full ? 'active-btn' : 'bg-white/5'}`}>
+                                            <span className="text-[8px] uppercase">{d.day}</span>
+                                            <span className="text-sm font-black">{d.date}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                                <div className="grid grid-cols-4 gap-2">
+                                    {timeSlots.map(t => (
+                                        <button key={t} onClick={() => setSelectedTime(t)} className={`py-2 rounded-lg text-[10px] font-bold border border-white/5 ${selectedTime === t ? 'active-btn' : 'bg-white/5 text-slate-400'}`}>{t}</button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="glass p-6 rounded-[2rem]">
+                                <p className="text-[10px] uppercase font-black tracking-widest text-indigo-400 mb-4">Пожелания</p>
+                                <textarea value={comment} onChange={e => setComment(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl p-4 text-sm outline-none focus:border-indigo-500 h-24" placeholder="Напишите «как обычно» или детали..."></textarea>
+                            </div>
+
+                            <button onClick={handleBooking} className="w-full bg-indigo-600 py-5 rounded-[2rem] font-black text-lg shadow-xl shadow-indigo-500/20 active:scale-95 transition-all">ЗАПИСАТЬСЯ</button>
+                        </div>
+                    ) : (
+                        <div className="space-y-3">
+                            {bookings.map(b => (
+                                <div key={b.id} className="glass p-4 rounded-2xl flex justify-between items-center">
+                                    <div>
+                                        <p className="font-bold text-sm">{b.name}</p>
+                                        <p className="text-[9px] text-indigo-400 uppercase tracking-widest">{b.time}</p>
+                                    </div>
+                                    <div className={`text-[8px] font-black px-3 py-1 rounded-full uppercase ${b.status === 'confirmed' ? 'bg-green-500/20 text-green-400' : (b.status === 'rejected' ? 'bg-red-500/20 text-red-400' : 'bg-amber-500/20 text-amber-400')}`}>
+                                        {b.status === 'pending' ? 'Ждет' : (b.status === 'confirmed' ? 'Ок' : 'Нет')}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
             );
         };
