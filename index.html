@@ -8,13 +8,14 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        body { font-family: 'Inter', sans-serif; background: #0F172A; color: white; }
+        body { font-family: 'Inter', sans-serif; background-color: #F8FAFC; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
-        .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
-        .active-btn { background: #6366F1 !important; color: white !important; box-shadow: 0 0 20px rgba(99, 102, 241, 0.4); }
+        .active-tab { position: relative; color: #6366F1; }
+        .active-tab::after { content: ''; position: absolute; bottom: -12px; left: 0; right: 0; height: 3px; background: #6366F1; border-radius: 2px; }
+        .card-shadow { box-shadow: 0 15px 30px -10px rgba(0, 0, 0, 0.08); }
     </style>
 </head>
 <body>
@@ -27,16 +28,36 @@
             const [selectedDate, setSelectedDate] = useState(null);
             const [selectedTime, setSelectedTime] = useState(null);
             const [selectedService, setSelectedService] = useState('Стрижка');
+            const [name, setName] = useState('');
+            const [phone, setPhone] = useState('');
             const [comment, setComment] = useState('');
+            const [occupiedSlots, setOccupiedSlots] = useState([]);
             const [bookings, setBookings] = useState([]);
 
-            // ТВОЯ ССЫЛКА NGROK (МЕНЯЙ ПРИ ПЕРЕЗАПУСКЕ!)
+            // !!! ВАЖНО: ЗАМЕНИ ЭТУ ССЫЛКУ НА СВОЮ АКТУАЛЬНУЮ ИЗ NGROK !!!
             const API_BASE = "https://playgroup-baked-equator.ngrok-free.dev"; 
 
             useEffect(() => {
-                window.Telegram?.WebApp?.ready();
-                window.Telegram?.WebApp?.expand();
+                const tg = window.Telegram?.WebApp;
+                tg?.ready();
+                tg?.expand();
+                if (tg?.initDataUnsafe?.user) {
+                    setName(tg.initDataUnsafe.user.first_name || '');
+                }
             }, []);
+
+            const fetchOccupied = useCallback(async () => {
+                try {
+                    const res = await fetch(`${API_BASE}/api/occupied_slots`, { headers: { "ngrok-skip-browser-warning": "69" } });
+                    if (res.ok) setOccupiedSlots(await res.json());
+                } catch (e) { console.error("Ошибка загрузки занятого времени"); }
+            }, [API_BASE]);
+
+            useEffect(() => {
+                fetchOccupied();
+                const itv = setInterval(fetchOccupied, 10000);
+                return () => clearInterval(itv);
+            }, [fetchOccupied]);
 
             const dates = Array.from({ length: 7 }, (_, i) => {
                 const d = new Date(); d.setDate(d.getDate() + i);
@@ -45,102 +66,115 @@
 
             const timeSlots = ["10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00"];
 
-            const fetchBookings = useCallback(async () => {
-                try {
-                    const res = await fetch(`${API_BASE}/api/bookings`, { headers: { "ngrok-skip-browser-warning": "69420" } });
-                    if (res.ok) setBookings(await res.json());
-                } catch (e) {}
-            }, [API_BASE]);
-
-            useEffect(() => {
-                fetchBookings();
-                const itv = setInterval(fetchBookings, 5000);
-                return () => clearInterval(itv);
-            }, [fetchBookings]);
-
             const handleBooking = async () => {
-                if (!selectedDate || !selectedTime) return alert("Выбери дату и время!");
+                if (!name || !phone || !selectedDate || !selectedTime) return alert("Заполни данные!");
                 
-                const user = window.Telegram?.WebApp?.initDataUnsafe?.user;
                 const payload = {
-                    name: user?.first_name || "Клиент",
-                    service: selectedService,
+                    name, phone, comment, service: selectedService,
                     time: `${selectedDate} ${selectedTime}`,
-                    comment: comment,
-                    telegram_id: user?.id?.toString() || "000000"
+                    telegram_id: window.Telegram?.WebApp?.initDataUnsafe?.user?.id?.toString() || "000000"
                 };
                 
                 try {
                     const res = await fetch(`${API_BASE}/api/book`, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json', "ngrok-skip-browser-warning": "69420" },
+                        headers: { 'Content-Type': 'application/json', "ngrok-skip-browser-warning": "69" },
                         body: JSON.stringify(payload)
                     });
                     if (res.ok) {
-                        window.Telegram?.WebApp?.close();
+                        window.Telegram.WebApp.showPopup({
+                            title: 'Заявка создана!',
+                            message: 'Если вы на окрашивание, отправьте фото ваших волос боту прямо сейчас.',
+                            buttons: [{type: 'ok'}]
+                        }, () => window.Telegram.WebApp.close());
                     }
-                } catch (e) { alert("Ошибка: " + e.message); }
+                } catch (e) { alert("Ошибка связи с сервером. Проверь API_BASE!"); }
             };
 
             return (
-                <div className="max-w-md mx-auto min-h-screen p-4">
-                    <div className="flex bg-slate-800 rounded-2xl p-1 mb-6">
-                        <button onClick={() => setView('client')} className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${view === 'client' ? 'bg-slate-700 text-white' : 'text-slate-400'}`}>Запись</button>
-                        <button onClick={() => setView('admin')} className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${view === 'admin' ? 'bg-slate-700 text-white' : 'text-slate-400'}`}>Журнал</button>
+                <div className="max-w-md mx-auto min-h-screen pb-12">
+                    <nav className="flex justify-around py-5 bg-white border-b sticky top-0 z-50">
+                        <button onClick={() => setView('client')} className={`text-xs font-black uppercase tracking-tighter transition-all ${view === 'client' ? 'active-tab' : 'text-slate-300'}`}>Клиент</button>
+                        <button onClick={() => setView('admin')} className={`text-xs font-black uppercase tracking-tighter transition-all ${view === 'admin' ? 'active-tab' : 'text-slate-300'}`}>Журнал</button>
+                    </nav>
+
+                    <div className="px-6 py-8">
+                        {view === 'client' ? (
+                            <div className="space-y-8 animate-in fade-in duration-500">
+                                <div>
+                                    <h1 className="text-4xl font-black text-slate-900 leading-tight">Assel <span className="text-indigo-600">Bot</span></h1>
+                                    <p className="text-slate-400 text-sm font-medium">Создаем твой идеальный образ</p>
+                                </div>
+
+                                <div className="space-y-4">
+                                    <div className="bg-white p-6 rounded-[2rem] card-shadow space-y-4 border border-slate-50">
+                                        <input value={name} onChange={e => setName(e.target.value)} className="w-full bg-slate-50 border-none rounded-xl p-4 text-sm font-semibold focus:ring-2 focus:ring-indigo-500/20" placeholder="Ваше имя" />
+                                        <input value={phone} onChange={e => setPhone(e.target.value)} type="tel" className="w-full bg-slate-50 border-none rounded-xl p-4 text-sm font-semibold focus:ring-2 focus:ring-indigo-500/20" placeholder="Телефон" />
+                                    </div>
+
+                                    <div className="bg-white p-6 rounded-[2rem] card-shadow border border-slate-50">
+                                        <div className="grid grid-cols-2 gap-4">
+                                            {['Стрижка', 'Окрашивание'].map(s => (
+                                                <button key={s} onClick={() => setSelectedService(s)} className={`p-5 rounded-2xl border-2 transition-all ${selectedService === s ? 'border-indigo-600 bg-indigo-50' : 'border-transparent bg-slate-50 text-slate-400'}`}>
+                                                    <span className="text-xl mb-1 block">{s === 'Стрижка' ? '✂️' : '🎨'}</span>
+                                                    <span className="text-[10px] font-black uppercase">{s}</span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-white p-6 rounded-[2rem] card-shadow border border-slate-50">
+                                        <div className="flex gap-3 overflow-x-auto no-scrollbar mb-6">
+                                            {dates.map(d => (
+                                                <button key={d.full} onClick={() => setSelectedDate(d.full)} className={`flex-shrink-0 w-14 h-16 rounded-xl flex flex-col items-center justify-center transition-all ${selectedDate === d.full ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' : 'bg-slate-50 text-slate-400'}`}>
+                                                    <span className="text-[8px] uppercase font-black">{d.day}</span>
+                                                    <span className="text-lg font-black">{d.date}</span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                        <div className="grid grid-cols-4 gap-2">
+                                            {timeSlots.map(t => {
+                                                const isOccupied = occupiedSlots.includes(`${selectedDate} ${t}`);
+                                                return (
+                                                    <button 
+                                                        key={t} 
+                                                        disabled={isOccupied}
+                                                        onClick={() => setSelectedTime(t)} 
+                                                        className={`py-3 rounded-xl text-[10px] font-bold border ${isOccupied ? 'bg-slate-100 text-slate-300 border-transparent cursor-not-allowed' : (selectedTime === t ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white border-slate-100 text-slate-500')}`}
+                                                    >
+                                                        {t}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-white p-6 rounded-[2rem] card-shadow border border-slate-50">
+                                        <textarea value={comment} onChange={e => setComment(e.target.value)} className="w-full bg-slate-50 border-none rounded-xl p-4 text-sm font-semibold min-h-[80px] resize-none focus:ring-2 focus:ring-indigo-500/20" placeholder="Нужен коммент? Напиши тут..."></textarea>
+                                    </div>
+
+                                    <button onClick={handleBooking} className="w-full bg-slate-900 text-white py-6 rounded-[2rem] font-bold shadow-xl active:scale-95 transition-all">Записаться →</button>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="space-y-4">
+                                <h2 className="text-3xl font-black mb-8">Журнал</h2>
+                                {bookings.length > 0 ? (
+                                    bookings.map(b => (
+                                        <div key={b.id} className="bg-white p-5 rounded-2xl card-shadow flex justify-between items-center border border-slate-50">
+                                            <div>
+                                                <div className="font-black text-slate-800">{b.name}</div>
+                                                <div className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest">{b.time}</div>
+                                            </div>
+                                            <div className={`px-4 py-1.5 rounded-full text-[8px] font-black uppercase ${b.status === 'confirmed' ? 'bg-emerald-100 text-emerald-600' : (b.status === 'rejected' ? 'bg-rose-100 text-rose-600' : 'bg-amber-100 text-amber-600')}`}>
+                                                {b.status === 'pending' ? 'Ждет' : (b.status === 'confirmed' ? 'Ок' : 'Нет')}
+                                            </div>
+                                        </div>
+                                    ))
+                                ) : <div className="text-center text-slate-300 py-20 font-bold">Записей пока нет</div>}
+                            </div>
+                        )}
                     </div>
-
-                    {view === 'client' ? (
-                        <div className="space-y-6">
-                            <div className="glass p-6 rounded-[2rem]">
-                                <p className="text-[10px] uppercase font-black tracking-widest text-indigo-400 mb-4">Услуга</p>
-                                <div className="grid grid-cols-2 gap-3">
-                                    {['Стрижка', 'Окрашивание'].map(s => (
-                                        <button key={s} onClick={() => setSelectedService(s)} className={`py-4 rounded-2xl border border-white/5 font-bold transition-all ${selectedService === s ? 'active-btn' : 'bg-white/5'}`}>
-                                            {s}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <div className="glass p-6 rounded-[2rem]">
-                                <p className="text-[10px] uppercase font-black tracking-widest text-indigo-400 mb-4">Когда?</p>
-                                <div className="flex gap-2 overflow-x-auto no-scrollbar mb-6">
-                                    {dates.map(d => (
-                                        <button key={d.full} onClick={() => setSelectedDate(d.full)} className={`flex-shrink-0 w-12 py-3 rounded-xl flex flex-col items-center border border-white/5 ${selectedDate === d.full ? 'active-btn' : 'bg-white/5'}`}>
-                                            <span className="text-[8px] uppercase">{d.day}</span>
-                                            <span className="text-sm font-black">{d.date}</span>
-                                        </button>
-                                    ))}
-                                </div>
-                                <div className="grid grid-cols-4 gap-2">
-                                    {timeSlots.map(t => (
-                                        <button key={t} onClick={() => setSelectedTime(t)} className={`py-2 rounded-lg text-[10px] font-bold border border-white/5 ${selectedTime === t ? 'active-btn' : 'bg-white/5 text-slate-400'}`}>{t}</button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <div className="glass p-6 rounded-[2rem]">
-                                <p className="text-[10px] uppercase font-black tracking-widest text-indigo-400 mb-4">Пожелания</p>
-                                <textarea value={comment} onChange={e => setComment(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl p-4 text-sm outline-none focus:border-indigo-500 h-24" placeholder="Напишите «как обычно» или детали..."></textarea>
-                            </div>
-
-                            <button onClick={handleBooking} className="w-full bg-indigo-600 py-5 rounded-[2rem] font-black text-lg shadow-xl shadow-indigo-500/20 active:scale-95 transition-all">ЗАПИСАТЬСЯ</button>
-                        </div>
-                    ) : (
-                        <div className="space-y-3">
-                            {bookings.map(b => (
-                                <div key={b.id} className="glass p-4 rounded-2xl flex justify-between items-center">
-                                    <div>
-                                        <p className="font-bold text-sm">{b.name}</p>
-                                        <p className="text-[9px] text-indigo-400 uppercase tracking-widest">{b.time}</p>
-                                    </div>
-                                    <div className={`text-[8px] font-black px-3 py-1 rounded-full uppercase ${b.status === 'confirmed' ? 'bg-green-500/20 text-green-400' : (b.status === 'rejected' ? 'bg-red-500/20 text-red-400' : 'bg-amber-500/20 text-amber-400')}`}>
-                                        {b.status === 'pending' ? 'Ждет' : (b.status === 'confirmed' ? 'Ок' : 'Нет')}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
                 </div>
             );
         };
