@@ -1,7 +1,7 @@
 import asyncio
 import datetime
 import time
-import os  # Добавь этот импорт
+import os
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -9,13 +9,30 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 from database import SessionLocal, Appointment
+from aiohttp import web  # Добавили для фиктивного сервера
 
 # --- НАСТРОЙКИ (Берем из переменных окружения) ---
 API_TOKEN = os.getenv("BOT_TOKEN")
-MY_ID = int(os.getenv("ADMIN_ID", 7082183196)) # 7082183196 - ID Асель по умолчанию
+# Берем ID из переменной или используем твой по умолчанию
+ADMIN_ID_ENV = os.getenv("ADMIN_ID")
+MY_ID = int(ADMIN_ID_ENV) if ADMIN_ID_ENV else 7082183196 
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
+
+# --- ФИКЦИЯ ДЛЯ RENDER (Health Check) ---
+async def handle_health_check(request):
+    return web.Response(text="Bot is running!")
+
+async def start_web_server():
+    app = web.Application()
+    app.router.add_get("/", handle_health_check)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    # Render дает порт в переменной окружения PORT
+    port = int(os.getenv("PORT", 8080))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
 
 # --- АНТИ-СПАМ СИСТЕМА ---
 user_last_action = {}
@@ -67,7 +84,7 @@ def get_occupied_intervals(date_val):
         Appointment.status.in_(["pending", "confirmed", "blocked"])
     ).all()
     db.close()
-    
+
     occupied_slots = []
     for a in apps:
         if "FULL_DAY" in a.date_time:
@@ -77,7 +94,7 @@ def get_occupied_intervals(date_val):
             start_m = time_to_min(time_part)
             duration = DURATIONS.get(a.service_type, 60)
             if a.status == "blocked": duration = 60
-            
+
             for m in range(start_m, start_m + duration, 30):
                 occupied_slots.append(m)
         except:
@@ -97,7 +114,7 @@ async def send_reminders():
         db = SessionLocal()
         now = datetime.datetime.now()
         confirmed = db.query(Appointment).filter(Appointment.status == "confirmed").all()
-        
+
         for app in confirmed:
             try:
                 app_dt = datetime.datetime.strptime(f"{now.year}.{app.date_time}", "%Y.%d.%m %H:%M")
@@ -105,7 +122,7 @@ async def send_reminders():
                 if 119 <= diff.total_seconds() / 60 <= 120:
                     if app.client_id and app.client_id.isdigit():
                         await bot.send_message(
-                            app.client_id, 
+                            app.client_id,
                             f"🌸 Напоминаем, вы записаны сегодня к Асель!\n"
                             f"⏰ Время: {app.date_time.split(' ')[1]}\n"
                             f"✂️ Услуга: {app.service_type}\n\nДо встречи!"
@@ -119,10 +136,9 @@ async def send_reminders():
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext):
     if is_spamming(message.from_user.id): return
-    
-    # Защита от анонимов (без username)
+
     if not message.from_user.username and message.from_user.id != MY_ID:
-        await message.answer("⚠️ Для использования бота, пожалуйста, установите **Username** (Имя пользователя) в настройках вашего Telegram профиля. Это нужно для связи мастера с вами.")
+        await message.answer("⚠️ Для использования бота, пожалуйста, установите **Username** (Имя пользователя) в настройках вашего Telegram профиля.")
         return
 
     await state.clear()
@@ -143,7 +159,7 @@ async def show_my_bookings(callback: types.CallbackQuery):
         Appointment.status.in_(["pending", "confirmed"])
     ).all()
     db.close()
-    
+
     if not active:
         await callback.message.answer("У вас нет активных записей.")
         return
@@ -188,14 +204,13 @@ async def select_time(callback: types.CallbackQuery, state: FSMContext):
     if is_spamming(callback.from_user.id): return
     date_val = callback.data.split("_")[1]
     data = await state.get_data()
-    
     current_state = await state.get_state()
     is_admin = current_state in [AdminManualBooking.date, AdminManualBooking.time]
     
     service = data['service']
     duration = DURATIONS[service]
     await state.update_data(date=date_val)
-    
+
     occupied = get_occupied_intervals(date_val)
     if occupied == "FULL":
         await callback.answer("Этот день полностью занят.", show_alert=True)
@@ -204,7 +219,7 @@ async def select_time(callback: types.CallbackQuery, state: FSMContext):
     kb = InlineKeyboardBuilder()
     start_working = time_to_min("10:00")
     end_working = time_to_min("19:00")
-    
+
     for m in range(start_working, end_working, 30):
         is_free = True
         for check_m in range(m, m + duration, 30):
@@ -216,10 +231,10 @@ async def select_time(callback: types.CallbackQuery, state: FSMContext):
             kb.button(text=t_str, callback_data=f"time_{t_str}")
         else:
             kb.button(text="занято", callback_data="ignore")
-            
+
     kb.adjust(4)
     await callback.message.edit_text(f"Услуга: {service}\nДата: {date_val}\nВыберите время:", reply_markup=kb.as_markup())
-    
+
     if is_admin:
         await state.set_state(AdminManualBooking.time)
     else:
@@ -230,7 +245,7 @@ async def handle_time_selection(callback: types.CallbackQuery, state: FSMContext
     if is_spamming(callback.from_user.id): return
     time_val = callback.data.split("_")[1]
     data = await state.update_data(time=time_val)
-    
+
     current_state = await state.get_state()
     if current_state == AdminManualBooking.time:
         await callback.message.edit_text("Введите ИМЯ клиентки (из WhatsApp):")
@@ -298,7 +313,7 @@ async def handle_phone(message: types.Message, state: FSMContext):
     db.add(new_app)
     db.commit()
     db.refresh(new_app)
-    
+
     user_link = get_user_link(message.from_user.id, message.from_user.username)
     kb = InlineKeyboardBuilder()
     kb.button(text="✅ Ок", callback_data=f"adm_confirm_{new_app.id}")
@@ -308,12 +323,12 @@ async def handle_phone(message: types.Message, state: FSMContext):
 
     msg_mom = (f"📩 **ЗАПИСЬ!**\n👤 {data['name']}\n📞 {phone}\n"
                f"✂️ {data['service']}\n📅 {full_time}\n💬: {data.get('comment', '-')}")
-    
+
     if 'photo_current' in data:
         await bot.send_photo(MY_ID, data['photo_current'], caption="📸 ТЕКУЩИЕ")
     if 'photo_target' in data:
         await bot.send_photo(MY_ID, data['photo_target'], caption="📸 ЖЕЛАЕМЫЕ")
-        
+
     await bot.send_message(MY_ID, msg_mom, reply_markup=kb.as_markup())
     await message.answer("✅ Готово! Мастер скоро подтвердит запись.", reply_markup=types.ReplyKeyboardRemove())
     await state.clear()
@@ -534,7 +549,11 @@ async def back_to_admin(callback: types.CallbackQuery):
     await admin_panel(callback.message)
 
 async def main():
+    # Запускаем фиктивный сервер для Render
+    asyncio.create_task(start_web_server())
+    # Запускаем напоминания
     asyncio.create_task(send_reminders())
+    # Запускаем бота
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
