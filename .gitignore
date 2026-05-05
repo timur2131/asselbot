@@ -1,7 +1,3 @@
-/.idea
-/.venv
-/appointments.db
-/database.py
-/main.py
-/requirements.txt
-/__pycache__
+*.db
+__pycache__/
+.env
